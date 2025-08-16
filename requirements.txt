@@ -10,3 +10,5 @@ transformers
 gradio
 notebook
 ipywidgets
+sentence-transformers
+numpy
