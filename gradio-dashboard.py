@@ -92,7 +92,7 @@ def initialize_database():
             print(f"Loaded {len(raw_documents)} raw documents")
             
             print("Splitting documents...")
-            text_splitter = CharacterTextSplitter(separator="\n", chunk_size=1, chunk_overlap=0)
+            text_splitter = CharacterTextSplitter(separator="\n", chunk_size=500, chunk_overlap=50)
             documents = text_splitter.split_documents(raw_documents)
             print(f"Created {len(documents)} chunks")
             
@@ -154,11 +154,35 @@ def retrieve_semantic_recommendations(
                 
                 # More robust parsing of the page content
                 content = rec.page_content.strip()
-                if content and '"' in content:
-                    book_id = int(content.split('"')[0])
+                
+                # Handle different formats:
+                # Format 1: 9780688085872 Description...
+                # Format 2: "9780688085872 Description..."
+                if content.startswith('"'):
+                    # Remove the leading quote and split
+                    content = content[1:]  # Remove leading quote
+                    if ' ' in content:
+                        book_id_str = content.split(' ')[0]
+                    else:
+                        book_id_str = content.split('"')[0] if '"' in content else content
+                else:
+                    # No leading quote
+                    if ' ' in content:
+                        book_id_str = content.split(' ')[0]
+                    else:
+                        book_id_str = content
+                
+                # Clean and convert to int
+                book_id_str = book_id_str.strip().replace('"', '')
+                if book_id_str and book_id_str.isdigit():
+                    book_id = int(book_id_str)
                     books_list.append(book_id)
                     if i < 5:
                         print(f"Extracted book ID: {book_id}")
+                else:
+                    if i < 10:  # Show more parsing errors for debugging
+                        print(f"Could not parse book ID from: '{book_id_str}' (original: {content[:50]}...)")
+                        
             except (ValueError, IndexError) as e:
                 print(f"Error parsing book ID from content: {content[:50]}... Error: {e}")
                 continue
@@ -205,15 +229,41 @@ def fallback_text_search(query, category, tone, final_top_k):
         query_lower = query.lower()
         
         # Search in title and description
-        mask = (
-            books["title"].str.lower().str.contains(query_lower, na=False) |
-            books["description"].str.lower().str.contains(query_lower, na=False)
-        )
+        title_mask = books["title"].str.lower().str.contains(query_lower, na=False)
+        desc_mask = books["description"].str.lower().str.contains(query_lower, na=False)
+        
+        # Combine masks
+        mask = title_mask | desc_mask
         
         book_recs = books[mask].head(final_top_k)
+        print(f"Text search found {len(book_recs)} books matching '{query}'")
+        
+        if len(book_recs) == 0:
+            # Try broader search with individual words
+            words = query_lower.split()
+            if len(words) > 1:
+                print(f"No exact matches found, trying individual words: {words}")
+                word_masks = []
+                for word in words:
+                    if len(word) > 2:  # Skip very short words
+                        word_mask = (
+                            books["title"].str.lower().str.contains(word, na=False) |
+                            books["description"].str.lower().str.contains(word, na=False)
+                        )
+                        word_masks.append(word_mask)
+                
+                if word_masks:
+                    # Combine with OR logic
+                    combined_mask = word_masks[0]
+                    for mask in word_masks[1:]:
+                        combined_mask = combined_mask | mask
+                    
+                    book_recs = books[combined_mask].head(final_top_k)
+                    print(f"Word-based search found {len(book_recs)} books")
         
         if category != "All" and not book_recs.empty:
             book_recs = book_recs[book_recs["simple_categories"] == category][:final_top_k]
+            print(f"After category filter: {len(book_recs)} books")
         
         if tone != "All" and not book_recs.empty:
             if tone == "Happy" and "joy" in book_recs.columns:
@@ -226,12 +276,15 @@ def fallback_text_search(query, category, tone, final_top_k):
                 book_recs = book_recs.sort_values(by="fear", ascending=False)
             elif tone == "Sad" and "sadness" in book_recs.columns:
                 book_recs = book_recs.sort_values(by="sadness", ascending=False)
+            print(f"After tone filter: {len(book_recs)} books")
         
-        print(f"Fallback search found {len(book_recs)} books")
+        print(f"Final fallback search result: {len(book_recs)} books")
         return book_recs
         
     except Exception as e:
         print(f"Error in fallback search: {e}")
+        import traceback
+        traceback.print_exc()
         return pd.DataFrame()
 
 def recommend_books(
