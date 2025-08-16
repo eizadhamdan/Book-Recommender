@@ -56,3 +56,31 @@ def retrieve_semantic_recommendations(
         book_recs.sort_values(by="sadness", ascending=False, inplace=True)
 
     return book_recs
+
+
+def recommend_books(
+        query: str,
+        category: str,
+        tone: str,
+):
+    recommendations = retrieve_semantic_recommendations(query, category, tone)
+    results = []
+
+    for _, row in recommendations.iterrows():
+        description = row["description"]
+        truncated_desc_split = description.split()
+        truncated_description = " ".join(truncated_desc_split[:30]) + "..."
+
+        authors_split = row["authors"].split(";")
+        if len(authors_split) == 2:
+            authors_str = f"{authors_split[0]}, {authors_split[1]}"
+        elif len(authors_split) > 2:
+            authors_str = f"{', '.join(authors_split[:-1])}, and {authors_split[-1]}"
+        else:
+            authors_str = row["authors"]
+
+        caption = f"{row['title']} by {authors_str}: {truncated_description}"
+        results.append((row["large_thumbnail"], caption))
+    
+    return results
+
