@@ -92,7 +92,7 @@ def initialize_database():
             print(f"Loaded {len(raw_documents)} raw documents")
             
             print("Splitting documents...")
-            text_splitter = CharacterTextSplitter(separator="\n", chunk_size=500, chunk_overlap=50)
+            text_splitter = CharacterTextSplitter(separator="\n", chunk_size=1, chunk_overlap=0)
             documents = text_splitter.split_documents(raw_documents)
             print(f"Created {len(documents)} chunks")
             
@@ -358,4 +358,3 @@ if __name__ == "__main__":
         )
     except Exception as e:
         print(f"Error launching dashboard: {e}")
-        
