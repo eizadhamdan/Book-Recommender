@@ -2,3 +2,4 @@
 .vscode
 .env
 emotion_model
+.gradio
